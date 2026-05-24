@@ -12,12 +12,18 @@ type ReportForm = {
   infrastructureType: string;
   damageType: string;
   description: string;
-  location: string;
+  address: string;
   city: string;
   neighborhood: string;
   riskLevel: "Bajo" | "Medio" | "Alto" | "Crítico";
-  status: "Registrado" | "En revisión" | "Priorizado" | "En atención" | "Solucionado" | "Cerrado";
-  imageUrl: string;
+  status:
+    | "Registrado"
+    | "En revisión"
+    | "Priorizado"
+    | "En atención"
+    | "Solucionado"
+    | "Cerrado";
+  imageData: string;
   latitude: string;
   longitude: string;
 };
@@ -27,20 +33,31 @@ const initialForm: ReportForm = {
   infrastructureType: "",
   damageType: "",
   description: "",
-  location: "",
+  address: "",
   city: "",
   neighborhood: "",
   riskLevel: "Bajo",
   status: "Registrado",
-  imageUrl: "",
+  imageData: "",
   latitude: "",
   longitude: "",
 };
 
+function RequiredMark() {
+  return <span className="ml-1 text-red-500">*</span>;
+}
+
+function safeTrim(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ message?: string }>;
-    return axiosError.response?.data?.message ?? "No se pudo guardar el reporte.";
+
+    return (
+      axiosError.response?.data?.message ?? "No se pudo guardar el reporte."
+    );
   }
 
   if (error instanceof Error) {
@@ -75,6 +92,34 @@ export default function NewReportPage() {
     }));
   };
 
+  const validateForm = () => {
+    if (!safeTrim(form.title)) {
+      return "El título del reporte es obligatorio.";
+    }
+
+    if (!safeTrim(form.infrastructureType)) {
+      return "El tipo de infraestructura es obligatorio.";
+    }
+
+    if (!safeTrim(form.damageType)) {
+      return "El tipo de daño es obligatorio.";
+    }
+
+    if (!safeTrim(form.description)) {
+      return "La descripción es obligatoria.";
+    }
+
+    if (!safeTrim(form.address)) {
+      return "La dirección o punto de referencia es obligatoria.";
+    }
+
+    if (!safeTrim(form.riskLevel)) {
+      return "El nivel de riesgo es obligatorio.";
+    }
+
+    return "";
+  };
+
   const handleImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
@@ -85,7 +130,7 @@ export default function NewReportPage() {
       return;
     }
 
-    const maxSizeMb = 2;
+    const maxSizeMb = 1.2;
     const maxSizeBytes = maxSizeMb * 1024 * 1024;
 
     if (file.size > maxSizeBytes) {
@@ -99,7 +144,8 @@ export default function NewReportPage() {
       const result = reader.result;
 
       if (typeof result === "string") {
-        updateField("imageUrl", result);
+        updateField("imageData", result);
+        setMessage("");
       }
     };
 
@@ -128,28 +174,10 @@ export default function NewReportPage() {
     event.preventDefault();
     setMessage("");
 
-    if (!form.title.trim()) {
-      setMessage("El título es obligatorio.");
-      return;
-    }
+    const validationMessage = validateForm();
 
-    if (!form.infrastructureType.trim()) {
-      setMessage("El tipo de infraestructura es obligatorio.");
-      return;
-    }
-
-    if (!form.damageType.trim()) {
-      setMessage("El tipo de daño es obligatorio.");
-      return;
-    }
-
-    if (!form.description.trim()) {
-      setMessage("La descripción es obligatoria.");
-      return;
-    }
-
-    if (!form.location.trim()) {
-      setMessage("La ubicación es obligatoria.");
+    if (validationMessage) {
+      setMessage(validationMessage);
       return;
     }
 
@@ -158,24 +186,32 @@ export default function NewReportPage() {
 
       const token = getToken();
 
+      if (!token) {
+        setMessage("Debes iniciar sesión para crear un reporte.");
+        router.push("/login");
+        return;
+      }
+
       await axios.post(
         "/api/reports",
         {
-          ...form,
-          coordinates:
-            form.latitude && form.longitude
-              ? {
-                  latitude: Number(form.latitude),
-                  longitude: Number(form.longitude),
-                }
-              : undefined,
+          title: safeTrim(form.title),
+          infrastructureType: safeTrim(form.infrastructureType),
+          damageType: safeTrim(form.damageType),
+          description: safeTrim(form.description),
+          city: safeTrim(form.city),
+          neighborhood: safeTrim(form.neighborhood),
+          address: safeTrim(form.address),
+          riskLevel: form.riskLevel,
+          status: form.status,
+          imageData: form.imageData,
+          latitude: form.latitude ? Number(form.latitude) : undefined,
+          longitude: form.longitude ? Number(form.longitude) : undefined,
         },
         {
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : undefined,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
@@ -194,11 +230,19 @@ export default function NewReportPage() {
       <section className="mx-auto max-w-5xl px-4 py-10">
         <div>
           <p className="badge bg-green-50 text-green-700">Nuevo reporte</p>
+
           <h1 className="mt-4 text-3xl font-black text-slate-950 md:text-5xl">
             Registrar afectación
           </h1>
+
           <p className="mt-3 max-w-3xl text-slate-600">
-            Documenta una afectación visible en infraestructura pública o comunitaria, agregando ubicación, evidencia y nivel de riesgo.
+            Documenta una afectación visible en infraestructura pública o
+            comunitaria, agregando ubicación, evidencia y nivel de riesgo.
+          </p>
+
+          <p className="mt-4 text-sm font-semibold text-slate-500">
+            Los campos marcados con <span className="text-red-500">*</span> son
+            obligatorios.
           </p>
         </div>
 
@@ -211,21 +255,33 @@ export default function NewReportPage() {
 
           <div className="grid gap-5 md:grid-cols-2">
             <div className="md:col-span-2">
-              <label className="label">Título del reporte</label>
+              <label className="label">
+                Título del reporte
+                <RequiredMark />
+              </label>
+
               <input
                 value={form.title}
                 onChange={(event) => updateField("title", event.target.value)}
                 className="input"
                 placeholder="Ejemplo: Andén deteriorado frente al colegio"
+                required
               />
             </div>
 
             <div>
-              <label className="label">Tipo de infraestructura</label>
+              <label className="label">
+                Tipo de infraestructura
+                <RequiredMark />
+              </label>
+
               <select
                 value={form.infrastructureType}
-                onChange={(event) => updateField("infrastructureType", event.target.value)}
-                className="input"
+                onChange={(event) =>
+                  updateField("infrastructureType", event.target.value)
+                }
+                className="input cursor-pointer"
+                required
               >
                 <option value="">Seleccionar</option>
                 <option value="Vía">Vía</option>
@@ -241,11 +297,18 @@ export default function NewReportPage() {
             </div>
 
             <div>
-              <label className="label">Tipo de daño</label>
+              <label className="label">
+                Tipo de daño
+                <RequiredMark />
+              </label>
+
               <select
                 value={form.damageType}
-                onChange={(event) => updateField("damageType", event.target.value)}
-                className="input"
+                onChange={(event) =>
+                  updateField("damageType", event.target.value)
+                }
+                className="input cursor-pointer"
+                required
               >
                 <option value="">Seleccionar</option>
                 <option value="Grieta">Grieta</option>
@@ -259,17 +322,25 @@ export default function NewReportPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="label">Descripción</label>
+              <label className="label">
+                Descripción
+                <RequiredMark />
+              </label>
+
               <textarea
                 value={form.description}
-                onChange={(event) => updateField("description", event.target.value)}
+                onChange={(event) =>
+                  updateField("description", event.target.value)
+                }
                 className="input min-h-32 resize-none"
                 placeholder="Describe brevemente la afectación visible."
+                required
               />
             </div>
 
             <div>
               <label className="label">Ciudad</label>
+
               <input
                 value={form.city}
                 onChange={(event) => updateField("city", event.target.value)}
@@ -280,32 +351,48 @@ export default function NewReportPage() {
 
             <div>
               <label className="label">Barrio o sector</label>
+
               <input
                 value={form.neighborhood}
-                onChange={(event) => updateField("neighborhood", event.target.value)}
+                onChange={(event) =>
+                  updateField("neighborhood", event.target.value)
+                }
                 className="input"
                 placeholder="Chapinero"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="label">Dirección o punto de referencia</label>
+              <label className="label">
+                Dirección o punto de referencia
+                <RequiredMark />
+              </label>
+
               <input
-                value={form.location}
-                onChange={(event) => updateField("location", event.target.value)}
+                value={form.address}
+                onChange={(event) => updateField("address", event.target.value)}
                 className="input"
                 placeholder="Carrera 10 con Calle 20, frente al parque"
+                required
               />
             </div>
 
             <div>
-              <label className="label">Nivel de riesgo</label>
+              <label className="label">
+                Nivel de riesgo
+                <RequiredMark />
+              </label>
+
               <select
                 value={form.riskLevel}
                 onChange={(event) =>
-                  updateField("riskLevel", event.target.value as ReportForm["riskLevel"])
+                  updateField(
+                    "riskLevel",
+                    event.target.value as ReportForm["riskLevel"]
+                  )
                 }
-                className="input"
+                className="input cursor-pointer"
+                required
               >
                 <option value="Bajo">Bajo</option>
                 <option value="Medio">Medio</option>
@@ -316,12 +403,16 @@ export default function NewReportPage() {
 
             <div>
               <label className="label">Estado inicial</label>
+
               <select
                 value={form.status}
                 onChange={(event) =>
-                  updateField("status", event.target.value as ReportForm["status"])
+                  updateField(
+                    "status",
+                    event.target.value as ReportForm["status"]
+                  )
                 }
-                className="input"
+                className="input cursor-pointer"
               >
                 <option value="Registrado">Registrado</option>
                 <option value="En revisión">En revisión</option>
@@ -337,9 +428,15 @@ export default function NewReportPage() {
             <div className="rounded-3xl border border-slate-200 bg-white p-5">
               <div className="flex items-center gap-3">
                 <Camera className="text-green-700" />
+
                 <div>
-                  <h3 className="font-black text-slate-950">Evidencia fotográfica</h3>
-                  <p className="text-sm text-slate-500">Carga una imagen del daño visible.</p>
+                  <h3 className="font-black text-slate-950">
+                    Evidencia fotográfica
+                  </h3>
+
+                  <p className="text-sm text-slate-500">
+                    Carga una imagen del daño visible. Campo opcional.
+                  </p>
                 </div>
               </div>
 
@@ -347,13 +444,13 @@ export default function NewReportPage() {
                 type="file"
                 accept="image/*"
                 onChange={handleImage}
-                className="mt-5 block w-full text-sm text-slate-600 file:mr-4 file:rounded-full file:border-0 file:bg-green-50 file:px-4 file:py-2 file:font-bold file:text-green-700"
+                className="mt-5 block w-full cursor-pointer text-sm text-slate-600 file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-green-50 file:px-4 file:py-2 file:font-bold file:text-green-700"
               />
 
-              {form.imageUrl && (
+              {form.imageData && (
                 <div className="relative mt-5 h-56 overflow-hidden rounded-3xl border border-slate-200">
                   <Image
-                    src={form.imageUrl}
+                    src={form.imageData}
                     alt="Evidencia del reporte"
                     fill
                     className="object-cover"
@@ -366,16 +463,22 @@ export default function NewReportPage() {
             <div className="rounded-3xl border border-slate-200 bg-white p-5">
               <div className="flex items-center gap-3">
                 <LocateFixed className="text-green-700" />
+
                 <div>
-                  <h3 className="font-black text-slate-950">Geolocalización</h3>
-                  <p className="text-sm text-slate-500">Captura coordenadas desde el navegador.</p>
+                  <h3 className="font-black text-slate-950">
+                    Geolocalización
+                  </h3>
+
+                  <p className="text-sm text-slate-500">
+                    Captura coordenadas desde el navegador. Campo opcional.
+                  </p>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={handleLocation}
-                className="btn-secondary mt-5 w-full"
+                className="btn-secondary mt-5 w-full cursor-pointer"
               >
                 Capturar ubicación
               </button>
@@ -383,14 +486,18 @@ export default function NewReportPage() {
               <div className="mt-5 grid gap-3 md:grid-cols-2">
                 <input
                   value={form.latitude}
-                  onChange={(event) => updateField("latitude", event.target.value)}
+                  onChange={(event) =>
+                    updateField("latitude", event.target.value)
+                  }
                   className="input"
                   placeholder="Latitud"
                 />
 
                 <input
                   value={form.longitude}
-                  onChange={(event) => updateField("longitude", event.target.value)}
+                  onChange={(event) =>
+                    updateField("longitude", event.target.value)
+                  }
                   className="input"
                   placeholder="Longitud"
                 />
@@ -401,7 +508,7 @@ export default function NewReportPage() {
           <button
             type="submit"
             disabled={saving}
-            className="btn-primary inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary inline-flex cursor-pointer items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Save size={18} />
             {saving ? "Guardando..." : "Guardar reporte"}

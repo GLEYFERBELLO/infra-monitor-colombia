@@ -2,12 +2,33 @@ import mongoose, { Schema, models, model } from "mongoose";
 
 const UserSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true },
-    role: { type: String, enum: ["admin", "gestor", "ciudadano"], default: "ciudadano" },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    role: {
+      type: String,
+      enum: ["admin", "gestor", "ciudadano"],
+      default: "ciudadano",
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-export default models.User || model("User", UserSchema);
+const User = models.User || model("User", UserSchema);
+
+export default User;
