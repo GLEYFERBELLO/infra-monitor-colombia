@@ -2,78 +2,260 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
+import axios, { AxiosError } from "axios";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
-import { deleteReport, getReport, updateReport } from "@/services/report.service";
+import {
+  deleteReport,
+  getReport,
+  updateReport,
+} from "@/services/report.service";
 import { Report, ReportStatus } from "@/types";
 import { formatDate, riskClass, statusClass } from "@/lib/utils";
 import { MapPin, Trash2 } from "lucide-react";
 
+type ApiErrorResponse = {
+  message?: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<ApiErrorResponse>;
+    return axiosError.response?.data?.message ?? fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export default function ReportDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+
   const [report, setReport] = useState<Report | null>(null);
   const [status, setStatus] = useState<ReportStatus>("Registrado");
+  const [loading, setLoading] = useState(true);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    getReport(params.id).then((data) => { setReport(data); setStatus(data.status); }).catch(() => toast.error("No fue posible consultar el reporte"));
+    async function loadReport() {
+      try {
+        setLoading(true);
+
+        const data = await getReport(params.id);
+
+        setReport(data);
+        setStatus(data.status);
+      } catch (error: unknown) {
+        toast.error(getErrorMessage(error, "No fue posible consultar el reporte"));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadReport();
   }, [params.id]);
 
   const saveStatus = async () => {
     try {
+      setSavingStatus(true);
+
       const updated = await updateReport(params.id, { status });
+
       setReport(updated);
       toast.success("Estado actualizado");
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "No fue posible actualizar");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "No fue posible actualizar"));
+    } finally {
+      setSavingStatus(false);
     }
   };
 
   const remove = async () => {
-    if (!confirm("¿Eliminar este reporte?")) return;
+    const confirmed = confirm("¿Eliminar este reporte?");
+
+    if (!confirmed) return;
+
     try {
+      setDeleting(true);
+
       await deleteReport(params.id);
+
       toast.success("Reporte eliminado");
       router.push("/reports");
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "No fue posible eliminar");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "No fue posible eliminar"));
+    } finally {
+      setDeleting(false);
     }
   };
 
-  if (!report) {
-    return <main className="min-h-screen bg-slate-50"><Navbar /><div className="p-10 text-center text-slate-500">Cargando reporte...</div></main>;
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <Navbar />
+        <div className="p-10 text-center text-slate-500">
+          Cargando reporte...
+        </div>
+      </main>
+    );
   }
+
+  if (!report) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <Navbar />
+        <section className="mx-auto max-w-5xl px-4 py-10">
+          <div className="card p-8 text-center">
+            <h1 className="text-2xl font-black text-slate-950">
+              Reporte no encontrado
+            </h1>
+            <p className="mt-2 text-slate-500">
+              No fue posible consultar la información del reporte.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/reports")}
+              className="btn-primary mt-5"
+            >
+              Volver a reportes
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const imageSrc = report.imageData || report.imageUrl;
 
   return (
     <main className="min-h-screen bg-slate-50">
       <Navbar />
+
       <section className="mx-auto max-w-5xl px-4 py-10">
         <div className="card overflow-hidden">
-          {report.imageData ? <img src={report.imageData} alt={report.title} className="h-96 w-full object-cover" /> : <div className="flex h-72 items-center justify-center bg-slate-100 text-slate-400">Sin imagen</div>}
+          {imageSrc ? (
+            <div className="relative h-96 w-full">
+              <Image
+                src={imageSrc}
+                alt={report.title}
+                fill
+                className="object-cover"
+                unoptimized
+                priority
+              />
+            </div>
+          ) : (
+            <div className="flex h-72 items-center justify-center bg-slate-100 text-slate-400">
+              Sin imagen
+            </div>
+          )}
+
           <div className="p-6 md:p-8">
             <div className="flex flex-wrap gap-2">
-              <span className={`badge ${riskClass(report.riskLevel)}`}>Riesgo {report.riskLevel}</span>
-              <span className={`badge ${statusClass(report.status)}`}>{report.status}</span>
+              <span className={`badge ${riskClass(report.riskLevel)}`}>
+                Riesgo {report.riskLevel}
+              </span>
+
+              <span className={`badge ${statusClass(report.status)}`}>
+                {report.status}
+              </span>
             </div>
-            <h1 className="mt-5 text-3xl font-black text-slate-950">{report.title}</h1>
-            <p className="mt-4 text-slate-600">{report.description}</p>
+
+            <h1 className="mt-5 text-3xl font-black text-slate-950">
+              {report.title}
+            </h1>
+
+            <p className="mt-4 text-slate-600">
+              {report.description}
+            </p>
 
             <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl bg-slate-50 p-5"><b>Tipo de infraestructura</b><p className="mt-1 text-slate-500">{report.infrastructureType}</p></div>
-              <div className="rounded-3xl bg-slate-50 p-5"><b>Tipo de daño</b><p className="mt-1 text-slate-500">{report.damageType}</p></div>
-              <div className="rounded-3xl bg-slate-50 p-5"><b>Ubicación</b><p className="mt-1 flex gap-2 text-slate-500"><MapPin size={18} /> {report.city}, {report.neighborhood}, {report.address}</p></div>
-              <div className="rounded-3xl bg-slate-50 p-5"><b>Fecha</b><p className="mt-1 text-slate-500">{formatDate(report.createdAt)}</p></div>
-              {(report.latitude || report.longitude) && <div className="rounded-3xl bg-slate-50 p-5 md:col-span-2"><b>Coordenadas</b><p className="mt-1 text-slate-500">{report.latitude}, {report.longitude}</p></div>}
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <b>Tipo de infraestructura</b>
+                <p className="mt-1 text-slate-500">
+                  {report.infrastructureType}
+                </p>
+              </div>
+
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <b>Tipo de daño</b>
+                <p className="mt-1 text-slate-500">
+                  {report.damageType}
+                </p>
+              </div>
+
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <b>Ubicación</b>
+                <p className="mt-1 flex gap-2 text-slate-500">
+                  <MapPin size={18} />
+                  {[report.city, report.neighborhood, report.address]
+                    .filter(Boolean)
+                    .join(", ") || "Sin ubicación registrada"}
+                </p>
+              </div>
+
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <b>Fecha</b>
+                <p className="mt-1 text-slate-500">
+                  {formatDate(report.createdAt)}
+                </p>
+              </div>
+
+              {(report.latitude || report.longitude) && (
+                <div className="rounded-3xl bg-slate-50 p-5 md:col-span-2">
+                  <b>Coordenadas</b>
+                  <p className="mt-1 text-slate-500">
+                    {report.latitude}, {report.longitude}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-8 rounded-3xl border border-slate-200 p-5">
-              <label className="label">Actualizar estado del reporte</label>
+              <label className="label">
+                Actualizar estado del reporte
+              </label>
+
               <div className="flex flex-col gap-3 sm:flex-row">
-                <select className="input" value={status} onChange={(e)=>setStatus(e.target.value as ReportStatus)}>
-                  <option>Registrado</option><option>En revisión</option><option>Priorizado</option><option>En atención</option><option>Solucionado</option><option>Cerrado</option>
+                <select
+                  className="input"
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(event.target.value as ReportStatus)
+                  }
+                >
+                  <option value="Registrado">Registrado</option>
+                  <option value="En revisión">En revisión</option>
+                  <option value="Priorizado">Priorizado</option>
+                  <option value="En atención">En atención</option>
+                  <option value="Solucionado">Solucionado</option>
+                  <option value="Cerrado">Cerrado</option>
                 </select>
-                <button className="btn-primary" onClick={saveStatus}>Guardar estado</button>
-                <button className="btn-secondary flex items-center justify-center gap-2 text-red-600" onClick={remove}><Trash2 size={18} /> Eliminar</button>
+
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={saveStatus}
+                  disabled={savingStatus}
+                >
+                  {savingStatus ? "Guardando..." : "Guardar estado"}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-secondary flex items-center justify-center gap-2 text-red-600"
+                  onClick={remove}
+                  disabled={deleting}
+                >
+                  <Trash2 size={18} />
+                  {deleting ? "Eliminando..." : "Eliminar"}
+                </button>
               </div>
             </div>
           </div>

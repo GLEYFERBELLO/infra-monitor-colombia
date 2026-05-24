@@ -27,6 +27,7 @@ export interface Report {
   createdBy?: User | string;
   createdAt?: string;
   updatedAt?: string;
+  imageUrl?: string;
 }
 
 export interface DashboardStats {

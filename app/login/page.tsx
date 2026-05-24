@@ -2,23 +2,44 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import axios, { AxiosError } from "axios";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
 
+type ApiErrorResponse = {
+  message?: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<ApiErrorResponse>;
+    return axiosError.response?.data?.message ?? fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export default function LoginPage() {
   const { login } = useAuth();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
     try {
       setLoading(true);
       await login(email, password);
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "No fue posible iniciar sesión");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "No fue posible iniciar sesión"));
     } finally {
       setLoading(false);
     }
@@ -27,16 +48,51 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <Navbar />
+
       <section className="mx-auto flex max-w-xl px-4 py-16">
         <form onSubmit={submit} className="card w-full p-8">
-          <h1 className="text-3xl font-black text-slate-950">Iniciar sesión</h1>
-          <p className="mt-2 text-slate-500">Accede para registrar y gestionar reportes.</p>
+          <h1 className="text-3xl font-black text-slate-950">
+            Iniciar sesión
+          </h1>
+
+          <p className="mt-2 text-slate-500">
+            Accede para registrar y gestionar reportes.
+          </p>
+
           <div className="mt-8 space-y-5">
-            <div><label className="label">Correo electrónico</label><input className="input" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required /></div>
-            <div><label className="label">Contraseña</label><input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required /></div>
-            <button className="btn-primary w-full" disabled={loading}>{loading ? "Ingresando..." : "Ingresar"}</button>
+            <div>
+              <label className="label">Correo electrónico</label>
+              <input
+                className="input"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="label">Contraseña</label>
+              <input
+                className="input"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
+
+            <button className="btn-primary w-full" disabled={loading}>
+              {loading ? "Ingresando..." : "Ingresar"}
+            </button>
           </div>
-          <p className="mt-6 text-center text-sm text-slate-500">¿No tienes cuenta? <Link href="/register" className="font-bold text-green-700">Crear cuenta</Link></p>
+
+          <p className="mt-6 text-center text-sm text-slate-500">
+            ¿No tienes cuenta?{" "}
+            <Link href="/register" className="font-bold text-green-700">
+              Crear cuenta
+            </Link>
+          </p>
         </form>
       </section>
     </main>

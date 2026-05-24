@@ -1,106 +1,413 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import axios, { AxiosError } from "axios";
 import Navbar from "@/components/Navbar";
-import Protected from "@/components/Protected";
-import { createReport } from "@/services/report.service";
-import { RiskLevel } from "@/types";
+import { Camera, LocateFixed, Save } from "lucide-react";
 
-const initial = {
-  title: "",
-  infrastructureType: "Vía pública",
-  damageType: "Deterioro",
-  description: "",
-  city: "Bogotá D.C.",
-  neighborhood: "",
-  address: "",
-  referencePoint: "",
-  latitude: "",
-  longitude: "",
-  riskLevel: "Medio" as RiskLevel,
-  imageData: "",
+type ReportForm = {
+  title: string;
+  infrastructureType: string;
+  damageType: string;
+  description: string;
+  location: string;
+  city: string;
+  neighborhood: string;
+  riskLevel: "Bajo" | "Medio" | "Alto" | "Crítico";
+  status: "Registrado" | "En revisión" | "Priorizado" | "En atención" | "Solucionado" | "Cerrado";
+  imageUrl: string;
+  latitude: string;
+  longitude: string;
 };
 
+const initialForm: ReportForm = {
+  title: "",
+  infrastructureType: "",
+  damageType: "",
+  description: "",
+  location: "",
+  city: "",
+  neighborhood: "",
+  riskLevel: "Bajo",
+  status: "Registrado",
+  imageUrl: "",
+  latitude: "",
+  longitude: "",
+};
+
+function getErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<{ message?: string }>;
+    return axiosError.response?.data?.message ?? "No se pudo guardar el reporte.";
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Ocurrió un error inesperado.";
+}
+
+function getToken() {
+  if (typeof window === "undefined") return null;
+
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("infra_token") ||
+    localStorage.getItem("infraMonitorToken")
+  );
+}
+
 export default function NewReportPage() {
-  const [form, setForm] = useState(initial);
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const change = (field: string, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
+  const [form, setForm] = useState<ReportForm>(initialForm);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const imageToBase64 = (event: ChangeEvent<HTMLInputElement>) => {
+  const updateField = (field: keyof ReportForm, value: string) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+
     if (!file) return;
-    if (!file.type.startsWith("image/")) return toast.error("Solo se permiten imágenes");
-    if (file.size > 1_000_000) return toast.error("Para este prototipo usa imágenes menores a 1MB");
+
+    if (!file.type.startsWith("image/")) {
+      setMessage("Solo se permiten imágenes.");
+      return;
+    }
+
+    const maxSizeMb = 2;
+    const maxSizeBytes = maxSizeMb * 1024 * 1024;
+
+    if (file.size > maxSizeBytes) {
+      setMessage(`La imagen no debe superar ${maxSizeMb} MB.`);
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = () => change("imageData", String(reader.result));
+
+    reader.onloadend = () => {
+      const result = reader.result;
+
+      if (typeof result === "string") {
+        updateField("imageUrl", result);
+      }
+    };
+
     reader.readAsDataURL(file);
   };
 
-  const useMyLocation = () => {
-    if (!navigator.geolocation) return toast.error("El navegador no permite geolocalización");
+  const handleLocation = () => {
+    if (!navigator.geolocation) {
+      setMessage("El navegador no soporta geolocalización.");
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        change("latitude", String(position.coords.latitude));
-        change("longitude", String(position.coords.longitude));
-        toast.success("Ubicación agregada");
+        updateField("latitude", String(position.coords.latitude));
+        updateField("longitude", String(position.coords.longitude));
+        setMessage("Ubicación capturada correctamente.");
       },
-      () => toast.error("No fue posible obtener la ubicación")
+      () => {
+        setMessage("No se pudo obtener la ubicación.");
+      }
     );
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage("");
+
+    if (!form.title.trim()) {
+      setMessage("El título es obligatorio.");
+      return;
+    }
+
+    if (!form.infrastructureType.trim()) {
+      setMessage("El tipo de infraestructura es obligatorio.");
+      return;
+    }
+
+    if (!form.damageType.trim()) {
+      setMessage("El tipo de daño es obligatorio.");
+      return;
+    }
+
+    if (!form.description.trim()) {
+      setMessage("La descripción es obligatoria.");
+      return;
+    }
+
+    if (!form.location.trim()) {
+      setMessage("La ubicación es obligatoria.");
+      return;
+    }
+
     try {
-      setLoading(true);
-      const report = await createReport(form);
-      toast.success("Reporte creado correctamente");
-      router.push(`/reports/${report._id}`);
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "No fue posible crear el reporte");
+      setSaving(true);
+
+      const token = getToken();
+
+      await axios.post(
+        "/api/reports",
+        {
+          ...form,
+          coordinates:
+            form.latitude && form.longitude
+              ? {
+                  latitude: Number(form.latitude),
+                  longitude: Number(form.longitude),
+                }
+              : undefined,
+        },
+        {
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : undefined,
+        }
+      );
+
+      router.push("/reports");
+    } catch (error: unknown) {
+      setMessage(getErrorMessage(error));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   return (
-    <Protected>
-      <main className="min-h-screen bg-slate-50">
-        <Navbar />
-        <section className="mx-auto max-w-4xl px-4 py-10">
-          <div className="mb-8">
-            <h1 className="text-3xl font-black text-slate-950">Nuevo reporte</h1>
-            <p className="mt-2 text-slate-500">Registra una afectación visible en infraestructura pública o comunitaria.</p>
+    <main className="min-h-screen bg-slate-50">
+      <Navbar />
+
+      <section className="mx-auto max-w-5xl px-4 py-10">
+        <div>
+          <p className="badge bg-green-50 text-green-700">Nuevo reporte</p>
+          <h1 className="mt-4 text-3xl font-black text-slate-950 md:text-5xl">
+            Registrar afectación
+          </h1>
+          <p className="mt-3 max-w-3xl text-slate-600">
+            Documenta una afectación visible en infraestructura pública o comunitaria, agregando ubicación, evidencia y nivel de riesgo.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="card mt-8 grid gap-6 p-6">
+          {message && (
+            <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-800">
+              {message}
+            </div>
+          )}
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="label">Título del reporte</label>
+              <input
+                value={form.title}
+                onChange={(event) => updateField("title", event.target.value)}
+                className="input"
+                placeholder="Ejemplo: Andén deteriorado frente al colegio"
+              />
+            </div>
+
+            <div>
+              <label className="label">Tipo de infraestructura</label>
+              <select
+                value={form.infrastructureType}
+                onChange={(event) => updateField("infrastructureType", event.target.value)}
+                className="input"
+              >
+                <option value="">Seleccionar</option>
+                <option value="Vía">Vía</option>
+                <option value="Puente peatonal">Puente peatonal</option>
+                <option value="Parque">Parque</option>
+                <option value="Luminaria">Luminaria</option>
+                <option value="Andén">Andén</option>
+                <option value="Alcantarillado">Alcantarillado</option>
+                <option value="Colegio">Colegio</option>
+                <option value="Salón comunal">Salón comunal</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Tipo de daño</label>
+              <select
+                value={form.damageType}
+                onChange={(event) => updateField("damageType", event.target.value)}
+                className="input"
+              >
+                <option value="">Seleccionar</option>
+                <option value="Grieta">Grieta</option>
+                <option value="Hundimiento">Hundimiento</option>
+                <option value="Deterioro">Deterioro</option>
+                <option value="Obstrucción">Obstrucción</option>
+                <option value="Falla eléctrica">Falla eléctrica</option>
+                <option value="Riesgo estructural">Riesgo estructural</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="label">Descripción</label>
+              <textarea
+                value={form.description}
+                onChange={(event) => updateField("description", event.target.value)}
+                className="input min-h-32 resize-none"
+                placeholder="Describe brevemente la afectación visible."
+              />
+            </div>
+
+            <div>
+              <label className="label">Ciudad</label>
+              <input
+                value={form.city}
+                onChange={(event) => updateField("city", event.target.value)}
+                className="input"
+                placeholder="Bogotá"
+              />
+            </div>
+
+            <div>
+              <label className="label">Barrio o sector</label>
+              <input
+                value={form.neighborhood}
+                onChange={(event) => updateField("neighborhood", event.target.value)}
+                className="input"
+                placeholder="Chapinero"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="label">Dirección o punto de referencia</label>
+              <input
+                value={form.location}
+                onChange={(event) => updateField("location", event.target.value)}
+                className="input"
+                placeholder="Carrera 10 con Calle 20, frente al parque"
+              />
+            </div>
+
+            <div>
+              <label className="label">Nivel de riesgo</label>
+              <select
+                value={form.riskLevel}
+                onChange={(event) =>
+                  updateField("riskLevel", event.target.value as ReportForm["riskLevel"])
+                }
+                className="input"
+              >
+                <option value="Bajo">Bajo</option>
+                <option value="Medio">Medio</option>
+                <option value="Alto">Alto</option>
+                <option value="Crítico">Crítico</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Estado inicial</label>
+              <select
+                value={form.status}
+                onChange={(event) =>
+                  updateField("status", event.target.value as ReportForm["status"])
+                }
+                className="input"
+              >
+                <option value="Registrado">Registrado</option>
+                <option value="En revisión">En revisión</option>
+                <option value="Priorizado">Priorizado</option>
+                <option value="En atención">En atención</option>
+                <option value="Solucionado">Solucionado</option>
+                <option value="Cerrado">Cerrado</option>
+              </select>
+            </div>
           </div>
 
-          <form onSubmit={submit} className="card p-6 md:p-8">
-            <div className="grid gap-5 md:grid-cols-2">
-              <div className="md:col-span-2"><label className="label">Título del reporte</label><input className="input" value={form.title} onChange={(e)=>change("title", e.target.value)} required placeholder="Ej: Andén deteriorado cerca al parque" /></div>
-              <div><label className="label">Tipo de infraestructura</label><select className="input" value={form.infrastructureType} onChange={(e)=>change("infrastructureType", e.target.value)}><option>Vía pública</option><option>Puente peatonal</option><option>Parque</option><option>Luminaria</option><option>Alcantarillado</option><option>Colegio</option><option>Salón comunal</option><option>Andén</option></select></div>
-              <div><label className="label">Tipo de daño</label><select className="input" value={form.damageType} onChange={(e)=>change("damageType", e.target.value)}><option>Deterioro</option><option>Grieta</option><option>Hundimiento</option><option>Falla eléctrica</option><option>Obstrucción</option><option>Riesgo visible</option><option>Daño estructural</option></select></div>
-              <div className="md:col-span-2"><label className="label">Descripción</label><textarea className="input min-h-32" value={form.description} onChange={(e)=>change("description", e.target.value)} required placeholder="Describe el problema de forma clara" /></div>
-              <div><label className="label">Ciudad</label><input className="input" value={form.city} onChange={(e)=>change("city", e.target.value)} required /></div>
-              <div><label className="label">Barrio / localidad</label><input className="input" value={form.neighborhood} onChange={(e)=>change("neighborhood", e.target.value)} required /></div>
-              <div><label className="label">Dirección</label><input className="input" value={form.address} onChange={(e)=>change("address", e.target.value)} required /></div>
-              <div><label className="label">Punto de referencia</label><input className="input" value={form.referencePoint} onChange={(e)=>change("referencePoint", e.target.value)} /></div>
-              <div><label className="label">Nivel de riesgo</label><select className="input" value={form.riskLevel} onChange={(e)=>change("riskLevel", e.target.value)}><option>Bajo</option><option>Medio</option><option>Alto</option><option>Crítico</option></select></div>
-              <div><label className="label">Evidencia fotográfica</label><input className="input" type="file" accept="image/*" onChange={imageToBase64} /></div>
-              <div><label className="label">Latitud</label><input className="input" value={form.latitude} onChange={(e)=>change("latitude", e.target.value)} /></div>
-              <div><label className="label">Longitud</label><input className="input" value={form.longitude} onChange={(e)=>change("longitude", e.target.value)} /></div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center gap-3">
+                <Camera className="text-green-700" />
+                <div>
+                  <h3 className="font-black text-slate-950">Evidencia fotográfica</h3>
+                  <p className="text-sm text-slate-500">Carga una imagen del daño visible.</p>
+                </div>
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImage}
+                className="mt-5 block w-full text-sm text-slate-600 file:mr-4 file:rounded-full file:border-0 file:bg-green-50 file:px-4 file:py-2 file:font-bold file:text-green-700"
+              />
+
+              {form.imageUrl && (
+                <div className="relative mt-5 h-56 overflow-hidden rounded-3xl border border-slate-200">
+                  <Image
+                    src={form.imageUrl}
+                    alt="Evidencia del reporte"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
+              )}
             </div>
 
-            {form.imageData && <img src={form.imageData} alt="Vista previa" className="mt-6 max-h-80 w-full rounded-3xl object-cover" />}
+            <div className="rounded-3xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center gap-3">
+                <LocateFixed className="text-green-700" />
+                <div>
+                  <h3 className="font-black text-slate-950">Geolocalización</h3>
+                  <p className="text-sm text-slate-500">Captura coordenadas desde el navegador.</p>
+                </div>
+              </div>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={useMyLocation} className="btn-secondary">Usar mi ubicación</button>
-              <button className="btn-primary" disabled={loading}>{loading ? "Guardando..." : "Guardar reporte"}</button>
+              <button
+                type="button"
+                onClick={handleLocation}
+                className="btn-secondary mt-5 w-full"
+              >
+                Capturar ubicación
+              </button>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <input
+                  value={form.latitude}
+                  onChange={(event) => updateField("latitude", event.target.value)}
+                  className="input"
+                  placeholder="Latitud"
+                />
+
+                <input
+                  value={form.longitude}
+                  onChange={(event) => updateField("longitude", event.target.value)}
+                  className="input"
+                  placeholder="Longitud"
+                />
+              </div>
             </div>
-          </form>
-        </section>
-      </main>
-    </Protected>
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-primary inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save size={18} />
+            {saving ? "Guardando..." : "Guardar reporte"}
+          </button>
+        </form>
+      </section>
+    </main>
   );
 }

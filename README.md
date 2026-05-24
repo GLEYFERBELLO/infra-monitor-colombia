@@ -20,7 +20,7 @@ Plataforma web funcional para registrar, consultar y priorizar reportes de infra
 
 ```bash
 npm install
-cp .env.example .env.local
+cp .env.local
 npm run dev
 ```
 
@@ -33,9 +33,9 @@ http://localhost:3000
 ## Variables de entorno
 
 ```env
-MONGODB_URI=mongodb+srv://USUARIO:CLAVE@cluster0.xxxxx.mongodb.net/infra_monitor?retryWrites=true&w=majority
-JWT_SECRET=cambia_esta_clave_por_una_segura
-NEXT_PUBLIC_APP_NAME=InfraMonitor Colombia
+MONGODB_URI=
+JWT_SECRET=
+NEXT_PUBLIC_APP_NAME=
 ```
 
 ## Rutas principales
