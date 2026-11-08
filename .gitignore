@@ -6,3 +6,6 @@ node_modules
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# Capturas de pantalla para el documento de la actividad
+capturas-actividad-4/

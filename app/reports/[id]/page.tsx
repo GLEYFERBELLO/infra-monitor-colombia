@@ -373,7 +373,7 @@ export default function ReportDetailPage() {
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                     <button
                       type="button"
-                      className="btn-primary flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700"
+                      className="btn-danger flex items-center justify-center gap-2"
                       onClick={remove}
                       disabled={deleting}
                     >
