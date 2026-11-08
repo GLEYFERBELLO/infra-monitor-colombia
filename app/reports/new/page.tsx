@@ -5,7 +5,11 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
 import Navbar from "@/components/Navbar";
-import { Camera, LocateFixed, Save } from "lucide-react";
+import Protected from "@/components/Protected";
+import { createReport } from "@/services/report.service";
+import { RISK_CRITERIA } from "@/lib/permissions";
+import { RiskLevel } from "@/types";
+import { Camera, Info, LocateFixed, Save } from "lucide-react";
 
 type ReportForm = {
   title: string;
@@ -15,14 +19,7 @@ type ReportForm = {
   address: string;
   city: string;
   neighborhood: string;
-  riskLevel: "Bajo" | "Medio" | "Alto" | "Crítico";
-  status:
-    | "Registrado"
-    | "En revisión"
-    | "Priorizado"
-    | "En atención"
-    | "Solucionado"
-    | "Cerrado";
+  riskLevel: RiskLevel;
   imageData: string;
   latitude: string;
   longitude: string;
@@ -37,7 +34,6 @@ const initialForm: ReportForm = {
   city: "",
   neighborhood: "",
   riskLevel: "Bajo",
-  status: "Registrado",
   imageData: "",
   latitude: "",
   longitude: "",
@@ -67,18 +63,15 @@ function getErrorMessage(error: unknown) {
   return "Ocurrió un error inesperado.";
 }
 
-function getToken() {
-  if (typeof window === "undefined") return null;
-
+export default function NewReportPage() {
   return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("infra_token") ||
-    localStorage.getItem("infraMonitorToken")
+    <Protected>
+      <NewReportForm />
+    </Protected>
   );
 }
 
-export default function NewReportPage() {
+function NewReportForm() {
   const router = useRouter();
 
   const [form, setForm] = useState<ReportForm>(initialForm);
@@ -184,36 +177,19 @@ export default function NewReportPage() {
     try {
       setSaving(true);
 
-      const token = getToken();
-
-      if (!token) {
-        setMessage("Debes iniciar sesión para crear un reporte.");
-        router.push("/login");
-        return;
-      }
-
-      await axios.post(
-        "/api/reports",
-        {
-          title: safeTrim(form.title),
-          infrastructureType: safeTrim(form.infrastructureType),
-          damageType: safeTrim(form.damageType),
-          description: safeTrim(form.description),
-          city: safeTrim(form.city),
-          neighborhood: safeTrim(form.neighborhood),
-          address: safeTrim(form.address),
-          riskLevel: form.riskLevel,
-          status: form.status,
-          imageData: form.imageData,
-          latitude: form.latitude ? Number(form.latitude) : undefined,
-          longitude: form.longitude ? Number(form.longitude) : undefined,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await createReport({
+        title: safeTrim(form.title),
+        infrastructureType: safeTrim(form.infrastructureType),
+        damageType: safeTrim(form.damageType),
+        description: safeTrim(form.description),
+        city: safeTrim(form.city),
+        neighborhood: safeTrim(form.neighborhood),
+        address: safeTrim(form.address),
+        riskLevel: form.riskLevel,
+        imageData: form.imageData,
+        latitude: form.latitude || undefined,
+        longitude: form.longitude || undefined,
+      });
 
       router.push("/reports");
     } catch (error: unknown) {
@@ -377,7 +353,7 @@ export default function NewReportPage() {
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="label">
                 Nivel de riesgo
                 <RequiredMark />
@@ -386,12 +362,9 @@ export default function NewReportPage() {
               <select
                 value={form.riskLevel}
                 onChange={(event) =>
-                  updateField(
-                    "riskLevel",
-                    event.target.value as ReportForm["riskLevel"]
-                  )
+                  updateField("riskLevel", event.target.value as RiskLevel)
                 }
-                className="input cursor-pointer"
+                className="input cursor-pointer md:max-w-xs"
                 required
               >
                 <option value="Bajo">Bajo</option>
@@ -399,28 +372,21 @@ export default function NewReportPage() {
                 <option value="Alto">Alto</option>
                 <option value="Crítico">Crítico</option>
               </select>
-            </div>
 
-            <div>
-              <label className="label">Estado inicial</label>
-
-              <select
-                value={form.status}
-                onChange={(event) =>
-                  updateField(
-                    "status",
-                    event.target.value as ReportForm["status"]
-                  )
-                }
-                className="input cursor-pointer"
-              >
-                <option value="Registrado">Registrado</option>
-                <option value="En revisión">En revisión</option>
-                <option value="Priorizado">Priorizado</option>
-                <option value="En atención">En atención</option>
-                <option value="Solucionado">Solucionado</option>
-                <option value="Cerrado">Cerrado</option>
-              </select>
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="flex items-start gap-2 font-semibold text-slate-700">
+                  <Info size={17} className="mt-0.5 shrink-0 text-green-700" />
+                  Criterio del nivel {form.riskLevel}
+                </p>
+                <p className="mt-2">{RISK_CRITERIA[form.riskLevel].condition}</p>
+                <p className="mt-1 text-slate-500">
+                  Ejemplos: {RISK_CRITERIA[form.riskLevel].examples}
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  El nivel que escojas queda como propuesta. Un gestor lo confirma o lo corrige cuando
+                  pase el caso a revisión. Todo reporte se crea en estado <b>Registrado</b>.
+                </p>
+              </div>
             </div>
           </div>
 

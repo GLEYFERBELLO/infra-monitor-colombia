@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { User } from "@/types";
 import { loginUser, registerUser } from "@/services/auth.service";
+import { canSeeDashboard } from "@/lib/permissions";
 
 interface AuthContextValue {
   user: User | null;
@@ -33,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("infra_user", JSON.stringify(data.user));
     setUser(data.user);
     toast.success("Inicio de sesión correcto");
-    router.push("/dashboard");
+    router.push(canSeeDashboard(data.user.role) ? "/dashboard" : "/reports");
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("infra_user", JSON.stringify(data.user));
     setUser(data.user);
     toast.success("Cuenta creada correctamente");
-    router.push("/dashboard");
+    router.push(canSeeDashboard(data.user.role) ? "/dashboard" : "/reports");
   };
 
   const logout = () => {

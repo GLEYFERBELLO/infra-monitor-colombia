@@ -3,7 +3,9 @@ import { connectDB } from "@/lib/db";
 import Report from "@/models/Report";
 import User from "@/models/User";
 import { fail, ok } from "@/lib/api-response";
-import { getTokenPayload } from "@/lib/auth";
+import { getAuthUser } from "@/lib/guard";
+import { INITIAL_STATUS, RISK_LEVELS } from "@/lib/permissions";
+import { RiskLevel } from "@/types";
 
 void User;
 
@@ -20,13 +22,9 @@ type CreateReportBody = {
   latitude?: string | number;
   longitude?: string | number;
   riskLevel?: string;
-  status?: string;
   imageData?: string;
   imageUrl?: string;
-  coordinates?: {
-    latitude?: number;
-    longitude?: number;
-  };
+  coordinates?: { latitude?: number; longitude?: number };
 };
 
 export async function GET(req: NextRequest) {
@@ -71,10 +69,10 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const payload = getTokenPayload(req);
+    const auth = await getAuthUser(req);
 
-    if (!payload) {
-      return fail("No autorizado", 401);
+    if (!auth) {
+      return fail("Debes iniciar sesión para registrar un reporte", 401);
     }
 
     const body = (await req.json()) as CreateReportBody;
@@ -84,31 +82,19 @@ export async function POST(req: NextRequest) {
 
     const latitude =
       body.coordinates?.latitude ??
-      (body.latitude !== undefined && body.latitude !== ""
-        ? Number(body.latitude)
-        : undefined);
+      (body.latitude !== undefined && body.latitude !== "" ? Number(body.latitude) : undefined);
 
     const longitude =
       body.coordinates?.longitude ??
-      (body.longitude !== undefined && body.longitude !== ""
-        ? Number(body.longitude)
-        : undefined);
+      (body.longitude !== undefined && body.longitude !== "" ? Number(body.longitude) : undefined);
 
     const requiredFields = [
-      { key: "title", label: "título del reporte", value: body.title },
-      {
-        key: "infrastructureType",
-        label: "tipo de infraestructura",
-        value: body.infrastructureType,
-      },
-      { key: "damageType", label: "tipo de daño", value: body.damageType },
-      { key: "description", label: "descripción", value: body.description },
-      {
-        key: "address",
-        label: "dirección o punto de referencia",
-        value: address,
-      },
-      { key: "riskLevel", label: "nivel de riesgo", value: body.riskLevel },
+      { label: "título del reporte", value: body.title },
+      { label: "tipo de infraestructura", value: body.infrastructureType },
+      { label: "tipo de daño", value: body.damageType },
+      { label: "descripción", value: body.description },
+      { label: "dirección o punto de referencia", value: address },
+      { label: "nivel de riesgo", value: body.riskLevel },
     ];
 
     const missing = requiredFields.find(
@@ -119,17 +105,21 @@ export async function POST(req: NextRequest) {
       return fail(`Falta el campo obligatorio: ${missing.label}`, 400);
     }
 
-    if (
-      imageData &&
-      typeof imageData === "string" &&
-      imageData.length > 1_500_000
-    ) {
+    if (!RISK_LEVELS.includes(body.riskLevel as RiskLevel)) {
+      return fail("El nivel de riesgo no es válido", 400);
+    }
+
+    if (imageData && typeof imageData === "string" && imageData.length > 1_500_000) {
       return fail(
         "La imagen es demasiado pesada. Usa una imagen más pequeña para el prototipo.",
         400
       );
     }
 
+    const riskLevel = body.riskLevel as RiskLevel;
+
+    // El estado inicial no es configurable: todo reporte nace en "Registrado"
+    // y el nivel de riesgo queda como propuesta hasta que un gestor lo confirme.
     const report = await Report.create({
       title: body.title?.trim(),
       infrastructureType: body.infrastructureType?.trim(),
@@ -141,10 +131,22 @@ export async function POST(req: NextRequest) {
       referencePoint: body.referencePoint?.trim() || "",
       latitude,
       longitude,
-      riskLevel: body.riskLevel || "Bajo",
-      status: body.status || "Registrado",
+      riskLevel,
+      riskLevelProposed: riskLevel,
+      riskValidated: false,
+      status: INITIAL_STATUS,
+      statusHistory: [
+        {
+          status: INITIAL_STATUS,
+          note: `Reporte registrado con nivel de riesgo propuesto "${riskLevel}".`,
+          changedBy: auth.id,
+          changedByName: auth.name,
+          changedByRole: auth.role,
+          at: new Date(),
+        },
+      ],
       imageData,
-      createdBy: payload.id,
+      createdBy: auth.id,
     });
 
     return ok({ report }, 201);

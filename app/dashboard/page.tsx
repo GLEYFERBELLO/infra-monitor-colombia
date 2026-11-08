@@ -7,7 +7,7 @@ import StatCard from "@/components/StatCard";
 import ReportCard from "@/components/ReportCard";
 import { getDashboard } from "@/services/report.service";
 import { DashboardStats } from "@/types";
-import { AlertOctagon, AlertTriangle, CheckCircle2, ClipboardList } from "lucide-react";
+import { AlertOctagon, AlertTriangle, CheckCircle2, ClipboardList, ShieldQuestion } from "lucide-react";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -17,7 +17,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <Protected>
+    <Protected roles={["gestor", "admin"]}>
       <main className="min-h-screen bg-slate-50">
         <Navbar />
         <section className="mx-auto max-w-7xl px-4 py-10">
@@ -26,11 +26,12 @@ export default function DashboardPage() {
             <p className="mt-2 text-slate-500">Indicadores generales del monitoreo preventivo.</p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <StatCard title="Total reportes" value={stats?.totalReports ?? 0} description="Casos registrados" icon={ClipboardList} />
             <StatCard title="Riesgo alto" value={stats?.highRisk ?? 0} description="Requieren revisión" icon={AlertTriangle} />
             <StatCard title="Riesgo crítico" value={stats?.criticalRisk ?? 0} description="Prioridad máxima" icon={AlertOctagon} />
-            <StatCard title="Solucionados" value={stats?.solved ?? 0} description="Casos cerrados con atención" icon={CheckCircle2} />
+            <StatCard title="Solucionados" value={stats?.solved ?? 0} description="Casos con evidencia de arreglo" icon={CheckCircle2} />
+            <StatCard title="Riesgo sin validar" value={stats?.pendingRiskValidation ?? 0} description="Esperan revisión del gestor" icon={ShieldQuestion} />
           </div>
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">

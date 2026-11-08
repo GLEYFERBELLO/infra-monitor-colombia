@@ -2,42 +2,33 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import axios from "axios";
 import Navbar from "@/components/Navbar";
-import { AlertTriangle, Eye, Plus, Search } from "lucide-react";
-
-type Report = {
-  _id: string;
-  title: string;
-  infrastructureType: string;
-  damageType: string;
-  description: string;
-  location: string;
-  riskLevel: "Bajo" | "Medio" | "Alto" | "Crítico";
-  status: string;
-  imageUrl?: string;
-  createdAt: string;
-};
+import { useAuth } from "@/contexts/AuthContext";
+import { getReports } from "@/services/report.service";
+import { Report } from "@/types";
+import { formatDate, riskClass, statusClass } from "@/lib/utils";
+import { AlertTriangle, Eye, FilterX, Inbox, MapPin, Plus, Search, ShieldQuestion } from "lucide-react";
 
 export default function ReportsPage() {
+  const { user } = useAuth();
+
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [riskLevel, setRiskLevel] = useState("");
   const [status, setStatus] = useState("");
 
+  const hasFilters = Boolean(q.trim() || riskLevel || status);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
-
-      const params = new URLSearchParams();
-
-      if (q.trim()) params.set("q", q.trim());
-      if (riskLevel) params.set("riskLevel", riskLevel);
-      if (status) params.set("status", status);
-
-      const response = await axios.get(`/api/reports?${params.toString()}`);
-      setReports(response.data.reports ?? []);
+      const data = await getReports({
+        q: q.trim() || undefined,
+        riskLevel: riskLevel || undefined,
+        status: status || undefined,
+      });
+      setReports(data ?? []);
     } catch (error) {
       console.error("Error cargando reportes:", error);
       setReports([]);
@@ -50,12 +41,15 @@ export default function ReportsPage() {
     load();
   }, [load]);
 
-  const getRiskClass = (risk: Report["riskLevel"]) => {
-    if (risk === "Crítico") return "bg-red-50 text-red-700 border-red-200";
-    if (risk === "Alto") return "bg-orange-50 text-orange-700 border-orange-200";
-    if (risk === "Medio") return "bg-yellow-50 text-yellow-700 border-yellow-200";
-    return "bg-green-50 text-green-700 border-green-200";
+  const clearFilters = () => {
+    setQ("");
+    setRiskLevel("");
+    setStatus("");
   };
+
+  const locationOf = (report: Report) =>
+    [report.city, report.neighborhood, report.address].filter(Boolean).join(", ") ||
+    "Sin ubicación registrada";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -73,9 +67,12 @@ export default function ReportsPage() {
             </p>
           </div>
 
-          <Link href="/reports/new" className="btn-primary inline-flex items-center justify-center gap-2">
+          <Link
+            href={user ? "/reports/new" : "/login"}
+            className="btn-primary inline-flex items-center justify-center gap-2"
+          >
             <Plus size={18} />
-            Nuevo reporte
+            {user ? "Nuevo reporte" : "Ingresar para reportar"}
           </Link>
         </div>
 
@@ -90,11 +87,7 @@ export default function ReportsPage() {
             />
           </div>
 
-          <select
-            value={riskLevel}
-            onChange={(event) => setRiskLevel(event.target.value)}
-            className="input"
-          >
+          <select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)} className="input">
             <option value="">Todos los riesgos</option>
             <option value="Bajo">Bajo</option>
             <option value="Medio">Medio</option>
@@ -102,11 +95,7 @@ export default function ReportsPage() {
             <option value="Crítico">Crítico</option>
           </select>
 
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            className="input"
-          >
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="input">
             <option value="">Todos los estados</option>
             <option value="Registrado">Registrado</option>
             <option value="En revisión">En revisión</option>
@@ -118,20 +107,29 @@ export default function ReportsPage() {
         </div>
 
         {loading ? (
-          <div className="mt-8 card p-8 text-center text-slate-500">
-            Cargando reportes...
-          </div>
-        ) : reports.length === 0 ? (
-          <div className="mt-8 card p-8 text-center">
-            <AlertTriangle className="mx-auto text-green-700" size={38} />
+          <div className="card mt-8 p-8 text-center text-slate-500">Cargando reportes...</div>
+        ) : reports.length === 0 && hasFilters ? (
+          <div className="card mt-8 p-8 text-center">
+            <Search className="mx-auto text-slate-400" size={38} />
             <h2 className="mt-4 text-xl font-black text-slate-950">
-              No hay reportes registrados
+              Ningún reporte coincide con la búsqueda
             </h2>
             <p className="mt-2 text-slate-500">
-              Crea el primer reporte para iniciar el monitoreo preventivo.
+              Hay reportes registrados, pero ninguno cumple los filtros aplicados. Ajusta la búsqueda o
+              limpia los filtros para ver todos los casos.
             </p>
-            <Link href="/reports/new" className="btn-primary mt-5 inline-flex">
-              Crear reporte
+            <button type="button" onClick={clearFilters} className="btn-secondary mt-5 inline-flex items-center gap-2">
+              <FilterX size={17} />
+              Limpiar filtros
+            </button>
+          </div>
+        ) : reports.length === 0 ? (
+          <div className="card mt-8 p-8 text-center">
+            <Inbox className="mx-auto text-green-700" size={38} />
+            <h2 className="mt-4 text-xl font-black text-slate-950">No hay reportes registrados</h2>
+            <p className="mt-2 text-slate-500">Crea el primer reporte para iniciar el monitoreo preventivo.</p>
+            <Link href={user ? "/reports/new" : "/login"} className="btn-primary mt-5 inline-flex">
+              {user ? "Crear reporte" : "Ingresar para reportar"}
             </Link>
           </div>
         ) : (
@@ -139,22 +137,22 @@ export default function ReportsPage() {
             {reports.map((report) => (
               <article key={report._id} className="card overflow-hidden">
                 <div className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className={`rounded-full border px-3 py-1 text-xs font-bold ${getRiskClass(report.riskLevel)}`}>
-                      {report.riskLevel}
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <span className={`badge ${riskClass(report.riskLevel)}`}>
+                      <AlertTriangle size={14} /> {report.riskLevel}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                      {report.status}
-                    </span>
+                    <span className={`badge ${statusClass(report.status)}`}>{report.status}</span>
                   </div>
 
-                  <h2 className="mt-4 line-clamp-2 text-xl font-black text-slate-950">
-                    {report.title}
-                  </h2>
+                  {!report.riskValidated && (
+                    <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                      <ShieldQuestion size={14} /> Riesgo propuesto, pendiente de validación
+                    </p>
+                  )}
 
-                  <p className="mt-2 line-clamp-3 text-sm text-slate-500">
-                    {report.description}
-                  </p>
+                  <h2 className="mt-4 line-clamp-2 text-xl font-black text-slate-950">{report.title}</h2>
+
+                  <p className="mt-2 line-clamp-3 text-sm text-slate-500">{report.description}</p>
 
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <p>
@@ -163,9 +161,11 @@ export default function ReportsPage() {
                     <p>
                       <strong>Daño:</strong> {report.damageType}
                     </p>
-                    <p>
-                      <strong>Ubicación:</strong> {report.location}
+                    <p className="flex gap-2">
+                      <MapPin size={17} className="shrink-0 text-slate-400" />
+                      <span>{locationOf(report)}</span>
                     </p>
+                    <p className="text-slate-400">{formatDate(report.createdAt)}</p>
                   </div>
 
                   <Link

@@ -1,12 +1,27 @@
 export type Role = "admin" | "gestor" | "ciudadano";
 export type RiskLevel = "Bajo" | "Medio" | "Alto" | "Crítico";
-export type ReportStatus = "Registrado" | "En revisión" | "Priorizado" | "En atención" | "Solucionado" | "Cerrado";
+export type ReportStatus =
+  | "Registrado"
+  | "En revisión"
+  | "Priorizado"
+  | "En atención"
+  | "Solucionado"
+  | "Cerrado";
 
 export interface User {
   _id: string;
   name: string;
   email: string;
   role: Role;
+  createdAt?: string;
+}
+
+export interface StatusChange {
+  status: ReportStatus;
+  note?: string;
+  changedByName?: string;
+  changedByRole?: Role;
+  at?: string;
 }
 
 export interface Report {
@@ -22,7 +37,12 @@ export interface Report {
   latitude?: string;
   longitude?: string;
   riskLevel: RiskLevel;
+  riskLevelProposed?: RiskLevel;
+  riskValidated?: boolean;
+  riskValidatedByName?: string;
+  riskValidatedAt?: string;
   status: ReportStatus;
+  statusHistory?: StatusChange[];
   imageData?: string;
   createdBy?: User | string;
   createdAt?: string;
@@ -35,6 +55,7 @@ export interface DashboardStats {
   highRisk: number;
   criticalRisk: number;
   solved: number;
+  pendingRiskValidation: number;
   byStatus: { _id: string; count: number }[];
   byRisk: { _id: string; count: number }[];
   latestReports: Report[];
